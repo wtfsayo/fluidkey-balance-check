@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Sign for Fluidkey balance check</title>
+    <style>
+      :root {
+        --text: oklch(22% 0.01 260);
+        --text-muted: oklch(46% 0.01 260);
+        --surface: oklch(99% 0.002 260);
+        --border: oklch(22% 0.01 260 / 0.12);
+        --action: oklch(26% 0.01 260);
+        --action-text: oklch(98% 0.002 260);
+        --action-disabled: oklch(88% 0.004 260);
+        --action-disabled-text: oklch(52% 0.01 260);
+        --error: oklch(48% 0.17 27);
+        --success: oklch(45% 0.12 155);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --text: oklch(93% 0.005 260);
+          --text-muted: oklch(70% 0.01 260);
+          --surface: oklch(19% 0.008 260);
+          --border: oklch(31% 0.008 260);
+          --action: oklch(93% 0.005 260);
+          --action-text: oklch(19% 0.008 260);
+          --action-disabled: oklch(31% 0.008 260);
+          --action-disabled-text: oklch(62% 0.01 260);
+          --error: oklch(74% 0.15 27);
+          --success: oklch(78% 0.14 155);
+        }
+      }
+      body {
+        margin: 0;
+        padding: 3rem 1.25rem;
+        background: var(--surface);
+        color: var(--text);
+        font: 1rem/1.5 system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1.5rem;
+        max-width: 34rem;
+        margin: 0 auto;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        line-height: 1.25;
+        letter-spacing: -0.01em;
+        text-wrap: balance;
+      }
+      p {
+        margin: 0;
+        color: var(--text-muted);
+        text-wrap: pretty;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.25rem;
+        margin: 0;
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 0.75rem;
+      }
+      dt {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+      }
+      dd {
+        margin: 0;
+        font-family: ui-monospace, monospace;
+        font-size: 0.875rem;
+        overflow-wrap: anywhere;
+      }
+      button {
+        justify-self: start;
+        min-height: 2.75rem;
+        padding: 0 1.25rem;
+        border: 0;
+        border-radius: 0.625rem;
+        background: var(--action);
+        color: var(--action-text);
+        font: inherit;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 150ms ease-out, transform 150ms ease-out;
+      }
+      button:hover {
+        background: color-mix(in oklch, var(--action) 85%, var(--surface));
+      }
+      button:active {
+        transform: scale(0.96);
+      }
+      button:disabled {
+        background: var(--action-disabled);
+        color: var(--action-disabled-text);
+        cursor: default;
+        transform: none;
+      }
+      /* Reserves the line so the result does not push the layout around. */
+      #result {
+        overflow-wrap: anywhere;
+        min-height: 1.5rem;
+        color: var(--text);
+      }
+      #result[data-state="error"] {
+        color: var(--error);
+      }
+      #result[data-state="done"] {
+        color: var(--success);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        button {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Sign to list your Fluidkey addresses</h1>
+      <p>
+        Your wallet will show Fluidkey’s key-generation message. The signature goes to the script running in your
+        terminal on this computer, and nowhere else.
+      </p>
+      <dl>
+        <dt>Wallet that must sign</dt>
+        <dd id="wallet"></dd>
+      </dl>
+      <button id="sign" type="button">Sign with wallet</button>
+      <p id="result" role="status"></p>
+    </main>
+    <script>
+      const request = __REQUEST__;
+      const button = document.getElementById("sign");
+      const result = document.getElementById("result");
+      document.getElementById("wallet").textContent = request.address;
+
+      function show(state, text) {
+        result.dataset.state = state;
+        result.textContent = text;
+      }
+
+      button.addEventListener("click", async () => {
+        if (!window.ethereum) {
+          show("error", "✕ No wallet extension found. Open this page in the browser that has your wallet.");
+          return;
+        }
+        button.disabled = true;
+        button.textContent = "Waiting for wallet…";
+        show("pending", "");
+        try {
+          const [account] = await window.ethereum.request({ method: "eth_requestAccounts" });
+          if (account.toLowerCase() !== request.address.toLowerCase()) {
+            throw new Error(`Your wallet is on ${account}. Switch it to the wallet above and sign again.`);
+          }
+          const bytes = new TextEncoder().encode(request.message);
+          const hex = "0x" + Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+          const signature = await window.ethereum.request({ method: "personal_sign", params: [hex, account] });
+          const response = await fetch(location.href, { method: "POST", body: signature });
+          if (!response.ok) throw new Error("The script in your terminal is no longer waiting. Run it again.");
+          button.hidden = true;
+          show("done", "✓ Signed. Go back to your terminal; you can close this tab.");
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = "Sign with wallet";
+          show("error", `✕ ${error.message}`);
+        }
+      });
+    </script>
+  </body>
+</html>

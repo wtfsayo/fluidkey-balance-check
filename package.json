@@ -1,0 +1,14 @@
+{
+  "name": "fluidkey-balance-check",
+  "description": "Read-only terminal view of every Fluidkey stealth Safe a wallet controls, across all auto-earn profiles and chains.",
+  "private": true,
+  "license": "MIT",
+  "repository": "github:wtfsayo/fluidkey-balance-check",
+  "type": "module",
+  "dependencies": {
+    "@fluidkey/stealth-account-kit": "1.1.0",
+    "@walletconnect/sign-client": "2.25.0",
+    "uqr": "0.1.2",
+    "viem": "2.7.9"
+  }
+}
