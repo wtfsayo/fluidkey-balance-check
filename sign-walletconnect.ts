@@ -1,6 +1,6 @@
 import { SignClient } from "@walletconnect/sign-client";
 import { renderUnicodeCompact } from "uqr";
-import { type Address, type Hex, isAddressEqual, toHex } from "viem";
+import { type Address, type Hex, toHex } from "viem";
 
 // stdout carries only the signature; everything the user reads goes to stderr.
 const { address, message, projectId }: { address: Address; message: string; projectId: string } =
@@ -14,7 +14,7 @@ const client = await SignClient.init({
   metadata: {
     name: "Fluidkey balance check",
     description: "Read-only balance check for Fluidkey stealth accounts",
-    url: "https://github.com/fluidkey/fluidkey-stealth-account-kit",
+    url: "https://github.com/wtfsayo/fluidkey-balance-check",
     icons: [],
   },
 });
@@ -26,12 +26,16 @@ console.error(renderUnicodeCompact(uri!, { border: 2 }));
 console.error(`Scan with your wallet app, or paste this link into it:\n${uri}\n`);
 
 const session = await approval();
-const accounts = Object.values(session.namespaces).flatMap((namespace) => namespace.accounts);
-const account = accounts.find((caip10) => isAddressEqual(caip10.split(":")[2] as Address, address));
+// The wallet chooses these strings, so only well-formed ones are compared or printed.
+const accounts = Object.values(session.namespaces)
+  .flatMap((namespace) => namespace.accounts)
+  .filter((caip10) => /^eip155:\d+:0x[0-9a-fA-F]{40}$/.test(caip10));
+const account = accounts.find((caip10) => caip10.toLowerCase().endsWith(`:${address.toLowerCase()}`));
 const disconnect = () => client.disconnect({ topic: session.topic, reason: { code: 6000, message: "Done" } });
 if (!account) {
   await disconnect();
-  console.error(`Your wallet connected as ${accounts[0]?.split(":")[2]}. Switch it to ${address} and run this again.`);
+  const connected = accounts[0]?.split(":")[2] ?? "an account this tool does not recognise";
+  console.error(`Your wallet connected as ${connected}. Switch it to ${address} and run this again.`);
   process.exit(1);
 }
 

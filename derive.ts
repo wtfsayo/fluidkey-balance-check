@@ -23,13 +23,19 @@ if (command === "message") {
 }
 
 if (command === "view-key") {
-  const [wallet, message] = args;
+  const [wallet] = args;
+  // In the environment rather than the arguments, which every user on the machine can list.
+  const message = process.env.FLUIDKEY_MESSAGE!;
   const signature = input.trim() as Hex;
   // An empty signature means the signing step failed and has already said why.
   if (!signature) process.exit(1);
-  const signer = await recoverMessageAddress({ message, signature });
-  if (!isAddressEqual(signer, getAddress(wallet))) {
-    console.error(`That is not ${wallet}'s signature of the Fluidkey message for this PIN.`);
+  // The input is a secret, or text chosen by the wallet. Neither may be echoed, so every
+  // rejection below prints a fixed message.
+  const signer = /^0x[0-9a-fA-F]{130}$/.test(signature)
+    ? await recoverMessageAddress({ message, signature }).catch(() => undefined)
+    : undefined;
+  if (!signer || !isAddressEqual(signer, getAddress(wallet))) {
+    console.error(`The wallet did not return ${wallet}'s signature of the Fluidkey message for this PIN.`);
     process.exit(1);
   }
   // Fluidkey derives both keys from this one signature. The spending key exists only on the

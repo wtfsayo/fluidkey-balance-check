@@ -8,15 +8,16 @@ import params from "./fluidkey-params.json";
 const wallet = privateKeyToAccount("0x8575420a19052cf9bbe9ef4ac755a9abaaefa3f1f2e35d14c04f38829182e9ba");
 const pin = "1234";
 
-async function derive(args: string[], input: string) {
+async function derive(args: string[], input: string, message = "") {
   const child = Bun.spawn(["bun", "derive.ts", ...args], {
     cwd: import.meta.dir,
+    env: { ...process.env, FLUIDKEY_MESSAGE: message },
     stdin: new Blob([input]),
     stdout: "pipe",
     stderr: "pipe",
   });
-  const stdout = await new Response(child.stdout).text();
-  return { stdout, exitCode: await child.exited };
+  const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
+  return { stdout, stderr, exitCode: await child.exited };
 }
 
 async function signedMessage(signer = wallet) {
@@ -26,7 +27,7 @@ async function signedMessage(signer = wallet) {
 
 test("reproduces the addresses published in the kit's tests", async () => {
   const { message, signature } = await signedMessage();
-  const { stdout: viewKey } = await derive(["view-key", wallet.address, message], signature);
+  const { stdout: viewKey } = await derive(["view-key", wallet.address], signature, message);
   const { stdout } = await derive(["safes", "0", "3"], viewKey);
   const safes: { index: number; setup: string; address: string }[] = JSON.parse(stdout);
 
@@ -40,7 +41,7 @@ test("reproduces the addresses published in the kit's tests", async () => {
 
 test("the view key carries neither the signature nor the spending key", async () => {
   const { message, signature } = await signedMessage();
-  const { stdout: viewKey } = await derive(["view-key", wallet.address, message], signature);
+  const { stdout: viewKey } = await derive(["view-key", wallet.address], signature, message);
   const { spendingPrivateKey } = generateKeysFromSignature(signature);
 
   expect(Object.keys(JSON.parse(viewKey)).sort()).toEqual(["spendingPublicKey", "viewingKeyNode"]);
@@ -50,10 +51,21 @@ test("the view key carries neither the signature nor the spending key", async ()
 
 test("rejects a signature made by a different wallet", async () => {
   const { message, signature } = await signedMessage(privateKeyToAccount(`0x${"11".repeat(32)}`));
-  const { stdout, exitCode } = await derive(["view-key", wallet.address, message], signature);
+  const { stdout, exitCode } = await derive(["view-key", wallet.address], signature, message);
 
   expect(exitCode).toBe(1);
   expect(stdout).toBe("");
+});
+
+test("never echoes what the wallet returned, even when it is malformed", async () => {
+  const { message, signature } = await signedMessage();
+  const malformed = `${signature.slice(0, 100)}\x1b[2Jzz`;
+  const { stdout, stderr, exitCode } = await derive(["view-key", wallet.address], malformed, message);
+
+  expect(exitCode).toBe(1);
+  expect(stdout).toBe("");
+  expect(stderr).not.toContain(signature.slice(2, 66));
+  expect(stderr).not.toContain("\x1b");
 });
 
 test("auto-earn parameters reproduce a Safe that Fluidkey deployed", () => {

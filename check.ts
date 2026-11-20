@@ -16,22 +16,26 @@ if (!wallet || !/^0x[0-9a-fA-F]{40}$/.test(wallet) || !validRange) {
   console.error("Usage: bun check.ts <wallet address> [--from 0] [--to <index>] [--browser]");
   process.exit(1);
 }
+if (process.platform !== "darwin") {
+  console.error("This tool runs on macOS only: it isolates its key-handling steps with sandbox-exec.");
+  process.exit(1);
+}
 
 // A Fluidkey signature can produce the spending key, so it never enters this process. The signing
 // step pipes it straight into derive.ts, which answers with a key that can list Safes but not spend.
 // Both are sandboxed against writing to disk, and derive.ts against using the network.
 const NO_DISK = "(version 1)(allow default)(deny file-write*)";
 const OFFLINE = `${NO_DISK}(deny network*)`;
-const SIGN_INTO_VIEW_KEY =
-  'set -o pipefail; sandbox-exec -p "$0" bun "$1" | sandbox-exec -p "$2" bun derive.ts view-key "$3" "$4"';
+const SIGN_INTO_VIEW_KEY = 'set -o pipefail; sandbox-exec -p "$0" bun "$1" | sandbox-exec -p "$2" bun derive.ts view-key "$3"';
 // Fluidkey hands out indexes in order, so the scan stops after this many in a row are unused.
 const BATCH = 500;
 
 const derive = (...args: string[]) => ["sandbox-exec", "-p", OFFLINE, "bun", "derive.ts", ...args];
 
-async function run(command: string[], input: string): Promise<string> {
+async function run(command: string[], input: string, env: Record<string, string> = {}): Promise<string> {
   const child = Bun.spawn(command, {
     cwd: import.meta.dir,
+    env: { ...process.env, ...env },
     stdin: new Blob([input]),
     stdout: "pipe",
     stderr: "inherit",
@@ -74,8 +78,9 @@ const message = await run(derive("message", wallet), JSON.stringify({ pin }));
 const projectId = process.env.WALLETCONNECT_PROJECT_ID;
 const signer = values.browser || !projectId ? "sign-browser.ts" : "sign-walletconnect.ts";
 const viewKey = await run(
-  ["bash", "-c", SIGN_INTO_VIEW_KEY, NO_DISK, signer, OFFLINE, wallet, message],
+  ["bash", "-c", SIGN_INTO_VIEW_KEY, NO_DISK, signer, OFFLINE, wallet],
   JSON.stringify({ address: wallet, message, projectId }),
+  { FLUIDKEY_MESSAGE: message },
 );
 
 const state: ScanState = {

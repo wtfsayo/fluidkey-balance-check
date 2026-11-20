@@ -19,6 +19,7 @@ export type Summary = {
   safes: UsedSafe[];
   /** Holdings without a price count as zero. */
   usdValue: (holdings: Holding[]) => number;
+  isPriced: (holding: Holding) => boolean;
   total: number;
   unpriced: string[];
 };
@@ -33,6 +34,7 @@ const profileLabel = (setup: string) =>
 
 /** A Safe is in use once it is deployed on any chain or holds anything. */
 export function summarize(state: ScanState): Summary {
+  const isPriced = ({ priceKey }: Holding) => state.prices.has(priceKey);
   const usdValue = (holdings: Holding[]) =>
     holdings.reduce((total, holding) => total + (state.prices.get(holding.priceKey) ?? 0) * holding.amount, 0);
 
@@ -49,14 +51,15 @@ export function summarize(state: ScanState): Summary {
   return {
     safes: [...byAddress.values()].sort((a, b) => a.safe.index - b.safe.index),
     usdValue,
+    isPriced,
     total: usdValue(state.holdings),
-    unpriced: [...new Set(state.holdings.filter(({ priceKey }) => !state.prices.has(priceKey)).map(({ asset }) => asset))],
+    unpriced: [...new Set(state.holdings.filter((holding) => !isPriced(holding)).map(({ asset }) => asset))],
   };
 }
 
 function table(head: string[], rows: string[][], rightAligned: number[], empty: string): Line[] {
   if (rows.length === 0) return [{ text: empty, kind: "dim" }];
-  const widths = head.map((cell, column) => Math.max(cell.length, ...rows.map((row) => row[column].length)));
+  const widths = head.map((cell, column) => rows.reduce((width, row) => Math.max(width, row[column].length), cell.length));
   const format = (row: string[]) =>
     row
       .map((cell, column) => (rightAligned.includes(column) ? cell.padStart(widths[column]) : cell.padEnd(widths[column])))
@@ -71,7 +74,7 @@ export function assetLines(state: ScanState, summary: Summary): Line[] {
     .map(([asset, holdings]) => ({
       asset,
       amount: holdings.reduce((total, { amount }) => total + amount, 0),
-      usd: holdings.every(({ priceKey }) => state.prices.has(priceKey)) ? summary.usdValue(holdings) : undefined,
+      usd: holdings.every(summary.isPriced) ? summary.usdValue(holdings) : undefined,
     }))
     .sort((a, b) => (b.usd ?? -1) - (a.usd ?? -1));
   return table(
@@ -133,7 +136,7 @@ export function safeLines(summary: Summary, hideEmpty: boolean): Line[] {
       holding.chain,
       formatAmount(holding.amount),
       holding.asset,
-      formatUsd(summary.usdValue([holding])),
+      summary.isPriced(holding) ? formatUsd(summary.usdValue([holding])) : "–",
       holding.heldAs ?? "",
       safe.address,
     ]);
@@ -152,7 +155,10 @@ export function statusLine(state: ScanState): Line {
     return { text: `Checking indexes ${formatRange(state.checking)}: ${done} of ${CHAINS.length} chains done…`, kind: "warn" };
   }
   const failed = [...state.chains].filter(([, { failures }]) => failures.length > 0).map(([chain]) => chain);
-  if (failed.length > 0) return { text: `Incomplete: ${failed.join(", ")} could not be checked. Run it again.`, kind: "bad" };
+  if (failed.length > 0) {
+    const text = `Incomplete: ${failed.join(", ")} could not be checked, so the scan may also have stopped early. Run it again.`;
+    return { text, kind: "bad" };
+  }
   return { text: `Checked indexes ${formatRange(state.checked)} on all ${CHAINS.length} chains.` };
 }
 

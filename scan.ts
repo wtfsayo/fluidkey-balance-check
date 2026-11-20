@@ -1,4 +1,14 @@
-import { type Abi, type Address, createPublicClient, erc20Abi, formatUnits, http, parseAbi } from "viem";
+import {
+  type Abi,
+  type Address,
+  BaseError,
+  ContractFunctionZeroDataError,
+  createPublicClient,
+  erc20Abi,
+  formatUnits,
+  http,
+  parseAbi,
+} from "viem";
 import tokenList from "./tokens.json";
 
 export type Safe = { index: number; setup: string; address: Address };
@@ -40,9 +50,10 @@ const abi = parseAbi([
 ]);
 
 /**
- * Results line up with `calls`; a call that reverts or hits no contract yields undefined.
- * An RPC that rejects a whole request reports every call in it as failed, which would read
- * as zero balances, so each request ends with one call that cannot fail on its own.
+ * Results line up with `calls`. A call to an address with no contract yields undefined; any
+ * other failed call throws, so a Safe is never taken for undeployed because a read went wrong.
+ * An RPC that rejects a whole request reports every call in it as failed, so each request
+ * ends with one call that cannot fail on its own.
  */
 function reader(chain: Chain): Reader {
   const client = createPublicClient({ transport: http(process.env[`RPC_${chain.id}`] ?? chain.rpc) });
@@ -55,7 +66,12 @@ function reader(chain: Chain): Reader {
     });
     const canaryResult = results[calls.length];
     if (canaryResult.status === "failure") throw canaryResult.error;
-    return results.slice(0, calls.length).map((call) => (call.status === "success" ? call.result : undefined));
+    return results.slice(0, calls.length).map((call) => {
+      if (call.status === "success") return call.result;
+      const noContract = call.error instanceof BaseError && call.error.walk((cause) => cause instanceof ContractFunctionZeroDataError);
+      if (!noContract) throw call.error;
+      return undefined;
+    });
   };
   return async (calls) => {
     const requests = Array.from({ length: Math.ceil(calls.length / CALLS_PER_REQUEST) }, (_, i) =>

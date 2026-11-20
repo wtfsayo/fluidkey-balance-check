@@ -93,14 +93,29 @@ The signature in step 2 is as sensitive as a private key. Anyone who gets it can
 - **The spending key.** `derive.ts` computes it once, to take its public half, and exits. Everything else, including all the code that talks to RPCs, holds only the view key.
 - **The dependencies**, pinned in `bun.lock`: `@fluidkey/stealth-account-kit` 1.1.0, `viem` 2.7.9, `@walletconnect/sign-client` 2.25.0 and `uqr` 0.1.2. With WalletConnect, that library receives the signature. Use `--browser` to keep it out of the path.
 - **The constants in `fluidkey-params.json`**, copied from `fluidkey/sara` at commit `c841db0`. The tests check them against a Safe that Fluidkey deployed.
-- **The network.** The RPC endpoints see every candidate address from your IP, which lets them link your Safes to each other. The defaults are public endpoints; set `RPC_<chainId>` to change them. The WalletConnect relay sees your IP and an encrypted session. DefiLlama sees token addresses only.
+- **The network.** The RPC endpoints see every candidate address from your IP, which lets them link your Safes to each other. The defaults are public endpoints; set `RPC_<chainId>` to change them. An RPC can also lie about balances. It cannot move anything, and the text it returns is stripped of control characters before it reaches your terminal. The WalletConnect relay sees your IP and an encrypted session. DefiLlama sees token addresses only.
+- **Failures are loud.** A read that goes wrong marks the whole chain `NOT CHECKED`. It is never shown as a zero balance or an undeployed Safe.
 
 ## Limits
 
-- It shows native coins, the tokens in `tokens.json` and Fluidkey auto-earn vaults. Any other token is invisible to it. Add addresses to `tokens.json` to cover more.
+- It shows native coins, the tokens in `tokens.json` and Fluidkey auto-earn vaults. Any other token is invisible to it. See [Adding tokens](#adding-tokens).
 - A wrong PIN is not detected. It derives a different, empty set of addresses and reports nothing found.
 - An account with more than 500 unused indexes in a row needs `--to`.
+- When a chain cannot be checked, the scan may stop before it reaches your later Safes. Run it again, or set `RPC_<chainId>` for that chain.
+- An asset DefiLlama has no price for shows `–` in the USD column and is left out of the totals.
 - Profiles Fluidkey adds after v1.4 need new entries in `fluidkey-params.json`.
+
+## Adding tokens
+
+`tokens.json` maps a chain ID to the token contracts checked on that chain. The shipped list is the major stablecoins and assets plus the tokens seen moving through Fluidkey Safes in November 2026. To check another token, add its contract address, in lower case, under its chain ID:
+
+```json
+{
+  "8453": ["0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", "0xyourtokenaddress"]
+}
+```
+
+The tool does not discover tokens on its own. That would need an indexer API on every chain, and the tool talks only to plain RPC endpoints.
 
 ## Tests
 
@@ -108,7 +123,7 @@ The signature in step 2 is as sensitive as a private key. Anyone who gets it can
 bun test
 ```
 
-They check address derivation against the vectors in the kit's own test suite, and the auto-earn constants against a real Safe.
+They check address derivation against the vectors in the kit's own test suite, the auto-earn constants against a real Safe, that the view key holds neither the signature nor the spending key, and that a malformed reply from the wallet is never echoed.
 
 ## Credits and license
 
