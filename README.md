@@ -76,7 +76,7 @@ The exit code is non-zero when any chain could not be checked.
 
 1. `derive.ts` builds Fluidkey's key-generation message from your wallet address and PIN.
 2. Your wallet signs it. Fluidkey derives both the viewing key and the spending key from this one signature.
-3. The signing step pipes the signature straight into `derive.ts`, which returns a view key: the spending key's public half plus the viewing key. That is what Fluidkey's own servers hold for your account. It can list your Safes and cannot spend from them.
+3. The signing step pipes the signature straight into `derive.ts`, which returns a view key: a node derived from your viewing key (`m/5564'/0'`), plus the public half of the spending key. According to [Fluidkey's technical walkthrough](https://docs.fluidkey.com/technical-documentation/technical-walkthrough/), that node is the only secret the Fluidkey app shares with Fluidkey's servers, and the spending key stays in the app. A view key can list your Safes and cannot spend from them.
 4. For each address index, `derive.ts` uses the view key to compute the Safe address under every setup Fluidkey has used: no auto-earn, and the nine auto-earn profiles from v1.0 to v1.4. A Safe's address depends on the setup that was active when Fluidkey issued it, and nothing records which one that was, so each index has ten candidates.
 5. `scan.ts` asks each chain, through Multicall3, whether each candidate is deployed, what native coin and listed tokens it holds, and what it holds in Fluidkey's auto-earn vaults. Vault shares are shown as the asset they redeem for.
 6. Fluidkey hands out indexes in order. The scan covers 500 at a time and stops after 500 in a row are unused.

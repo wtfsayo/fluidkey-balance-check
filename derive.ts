@@ -10,7 +10,10 @@ import { getAddress, type Hex, isAddressEqual, recoverMessageAddress } from "vie
 import { HDKey, privateKeyToAccount } from "viem/accounts";
 import params from "./fluidkey-params.json";
 
-/** What Fluidkey's servers hold for an account: enough to list every Safe, not enough to spend from one. */
+/**
+ * Enough to list every Safe, not enough to spend from one. The viewing node, m/5564'/0', is the
+ * one secret the Fluidkey app shares with Fluidkey's servers; the spending public key is no secret.
+ */
 type ViewKey = { spendingPublicKey: Hex; viewingKeyNode: string };
 
 const [command, ...args] = Bun.argv.slice(2);
